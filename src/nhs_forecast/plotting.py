@@ -2,6 +2,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 
 from . import config
@@ -14,10 +15,10 @@ def plot_forecasts(df: pd.DataFrame, fc: pd.DataFrame, model: str, out_path, sou
     """Panel per region: actuals, median forecast, 80% (dark) and 95% (light) intervals.
     Held-out actuals outside the 95% interval are marked with a red cross."""
     regions = sorted(df["region"].unique())
-    ncol = 4
+    ncol = min(4, len(regions))
     nrow = -(-len(regions) // ncol)
     fig, axes = plt.subplots(nrow, ncol, figsize=(4.2 * ncol, 3.3 * nrow), sharex=True)
-    axes = axes.ravel()
+    axes = np.atleast_1d(axes).ravel()
     te = pd.Timestamp(train_end)
     for ax, region in zip(axes, regions):
         a = df[df["region"] == region].set_index("month")["rate"] * 100

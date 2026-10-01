@@ -23,12 +23,17 @@ import pandas as pd
 from . import config
 
 COLUMN_ALIASES = {
-    "region": ["REGION_NAME", "COMM_REGION_NAME", "NHSE_REGION_NAME"],
-    "month": ["APPOINTMENT_MONTH", "APPT_MONTH", "APPOINTMENT_MONTH_START_DATE", "MONTH"],
-    "status": ["APPT_STATUS"],
+    "month": ["APPOINTMENT_MONTH_START_DATE", "APPOINTMENT_MONTH", "APPT_MONTH", "MONTH"],
     "wait": ["TIME_BETWEEN_BOOK_AND_APPT"],
     "count": ["COUNT_OF_APPOINTMENTS"],
 }
+# Optional: present in some releases only (Dec 2022 / Jan 2023 releases have no APPT_STATUS).
+OPTIONAL_ALIASES = {"status": ["APPT_STATUS"], "category": ["NATIONAL_CATEGORY"]}
+# Series definition. The practice-level files carry sub-ICB but NOT region/ICB columns, so the
+# default is a single national series; 'sub_icb' gives one series per sub-ICB location.
+LEVEL_COLUMNS = {"national": None, "sub_icb": ["SUB_ICB_LOCATION_CODE"],
+                 "region": ["REGION_NAME", "COMM_REGION_NAME", "NHSE_REGION_NAME"]}
+NATIONAL_LABEL = "England"
 MONTH_FORMATS = ["%b%Y", "%B%Y", "%b %Y", "%B %Y", "%Y-%m", "%Y-%m-%d", "%d%b%Y", "%d/%m/%Y"]
 
 
@@ -60,14 +65,24 @@ def parse_month(values: pd.Series) -> pd.Series:
     raise ValueError(f"Could not parse month values, e.g. {v.unique()[:5].tolist()}")
 
 
-def _resolve_columns(header: list[str]) -> dict[str, str]:
+def _resolve_columns(header: list[str], level: str = "national") -> dict[str, str | None]:
     upper = {h.strip().upper(): h for h in header}
-    out = {}
+    out: dict[str, str | None] = {}
     for key, aliases in COLUMN_ALIASES.items():
         hit = next((upper[a] for a in aliases if a in upper), None)
         if hit is None:
             raise KeyError(f"No column for '{key}' (tried {aliases}). Columns seen: {header}")
         out[key] = hit
+    for key, aliases in OPTIONAL_ALIASES.items():
+        out[key] = next((upper[a] for a in aliases if a in upper), None)
+    group = LEVEL_COLUMNS[level]
+    if group is None:
+        out["region"] = None
+    else:
+        hit = next((upper[a] for a in group if a in upper), None)
+        if hit is None:
+            raise KeyError(f"level='{level}' needs one of {group}. Columns seen: {header}")
+        out["region"] = hit
     return out
 
 
@@ -88,19 +103,29 @@ def _iter_csv_handles(path: Path):
 
 
 def aggregate_file(path: Path, statuses: tuple[str, ...] | None = ("Attended",),
-                   chunksize: int = 500_000) -> pd.DataFrame:
-    """Stream one raw file -> counts by (region, month, wait band). Practice rows are summed away."""
+                   level: str = "national", chunksize: int = 500_000) -> pd.DataFrame:
+    """Stream one raw release -> counts by (region, month, wait band). Practice rows are summed away.
+
+    Every CSV in a zip is read and summed (large months are split over several CSVs).
+    If APPT_STATUS is absent from a CSV the status filter cannot be applied; a warning is printed.
+    """
     parts = []
     for name, fh in _iter_csv_handles(path):
         header = list(pd.read_csv(fh, nrows=0).columns)
         fh.seek(0)
-        cols = _resolve_columns(header)
-        for chunk in pd.read_csv(fh, usecols=list(cols.values()), chunksize=chunksize,
-                                 dtype={c: "string" for c in cols.values() if c != cols["count"]}):
-            chunk = chunk.rename(columns={v: k for k, v in cols.items()})
-            if statuses is not None:
+        cols = _resolve_columns(header, level)
+        use = {k: v for k, v in cols.items() if v is not None and k != "category"}
+        apply_status = statuses is not None and cols["status"] is not None
+        if statuses is not None and cols["status"] is None:
+            print(f"WARNING: {path.name}/{name}: no APPT_STATUS column; status filter NOT applied")
+        for chunk in pd.read_csv(fh, usecols=list(set(use.values())), chunksize=chunksize,
+                                 dtype={c: "string" for c in set(use.values()) if c != cols["count"]}):
+            chunk = chunk.rename(columns={v: k for k, v in use.items()})
+            if apply_status:
                 keep = {s.lower() for s in statuses}
                 chunk = chunk[chunk["status"].str.strip().str.lower().isin(keep)]
+            if cols["region"] is None:
+                chunk["region"] = NATIONAL_LABEL
             chunk["count"] = pd.to_numeric(chunk["count"], errors="coerce").fillna(0)
             parts.append(chunk.groupby(["region", "month", "wait"], as_index=False)["count"].sum())
     if not parts:
@@ -155,7 +180,7 @@ def select_final_months(per_release: dict[pd.Timestamp, pd.DataFrame], months: p
 
 def build_regional_series(paths: list[Path], long_wait_days: int = config.LONG_WAIT_DAYS,
                           statuses: tuple[str, ...] | None = ("Attended",),
-                          source: str = "nhs_digital", final_lag: int = 2,
+                          source: str = "nhs_digital", final_lag: int = 2, level: str = "national",
                           start: str = config.DATA_START, end: str = config.DATA_END,
                           provenance_out: Path | None = None) -> pd.DataFrame:
     """Aggregate raw release files to a tidy regional monthly table.
@@ -166,7 +191,7 @@ def build_regional_series(paths: list[Path], long_wait_days: int = config.LONG_W
     """
     per_release: dict[pd.Timestamp, pd.DataFrame] = {}
     for p in sorted(paths, key=lambda p: p.name):
-        agg = aggregate_file(p, statuses)
+        agg = aggregate_file(p, statuses, level)
         rel = release_month_from_name(p.name) or agg["month"].max()
         per_release[rel] = pd.concat([per_release[rel], agg]) if rel in per_release else agg
     months = pd.date_range(start, end, freq="MS")

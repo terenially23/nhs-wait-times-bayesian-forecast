@@ -35,7 +35,7 @@ def test_logit_roundtrip():
 def regional(tmp_path_factory):
     p = tmp_path_factory.mktemp("raw") / "Practice_Level_Crosstab_test.csv"
     make_practice_level(practices_per_region=2).to_csv(p, index=False)
-    return build_regional_series([p], source="synthetic")
+    return build_regional_series([p], source="synthetic", level="region")
 
 
 def test_aggregation_matches_manual(regional):
@@ -108,3 +108,19 @@ def test_release_month_from_name():
     assert f("Appointments_in_General_Practice_December_2024.zip") == pd.Timestamp("2024-12-01")
     assert f("Practice_Level_Crosstab_Dec_24.csv") == pd.Timestamp("2024-12-01")
     assert f("nothing.csv") is None
+
+
+def test_national_level_no_status_column_and_split_csvs(tmp_path):
+    """Real-file quirks: Dec22/Jan23 releases lack APPT_STATUS; big months are split across CSVs in a zip."""
+    import zipfile
+    raw = make_practice_level(practices_per_region=1).rename(columns={"APPOINTMENT_MONTH": "APPOINTMENT_MONTH_START_DATE"})
+    raw = raw.drop(columns=["APPT_STATUS", "REGION_NAME"])
+    half = len(raw) // 2
+    z = tmp_path / "Practice_Level_Crosstab_Dec_24.zip"
+    with zipfile.ZipFile(z, "w") as zf:
+        zf.writestr("Practice_Level_Crosstab_Dec_24_a.csv", raw.iloc[:half].to_csv(index=False))
+        zf.writestr("Practice_Level_Crosstab_Dec_24_b.csv", raw.iloc[half:].to_csv(index=False))
+    out = build_regional_series([z], level="national", final_lag=0)
+    assert out.region.unique().tolist() == ["England"] and len(out) == 25
+    known = raw[~raw.TIME_BETWEEN_BOOK_AND_APPT.str.contains("Unknown")]
+    assert out.total.sum() == known.COUNT_OF_APPOINTMENTS.sum()  # both halves summed, nothing dropped
