@@ -30,7 +30,7 @@ What this says:
 * **The naive random walk "wins" coverage only by being very wide**; the interval score (which penalises width as
   well as misses) ranks PyMC best in both schemes. The random walk is better on point accuracy at h=1–2 (fixed origin,
   1-month-ahead RMSE well below the seasonal models), which is worth being straightforward about.
-* **One event drives much of the miss.** October 2024 jumped to 18–29% (e.g. East of England 17.7% → 25.3%) in every region,
+* **One event drives much of the miss.** October 2024 jumped in every region (e.g. East of England 17.7% → 25.3%; 22–29% outside London, London 9.3% → 11.8%),
   above anything in the 2022–23 training window. UC misses it in 6 of 7 regions. PyMC contains it at 95% in all 7 only
   because its intervals widen, and at 80% in just 2 of 7. **Excluding Oct 2024, fixed-origin coverage is PyMC 89% / 98%,
   UC 54% / 83%** (63 forecasts).
