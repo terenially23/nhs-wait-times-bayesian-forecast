@@ -35,7 +35,7 @@ LEVEL_COLUMNS = {"national": None, "sub_icb": ["SUB_ICB_LOCATION_CODE"],
                  "region_lookup": ["SUB_ICB_LOCATION_CODE"],  # sub-ICB aggregated, then mapped via geography.apply_lookup
                  "region": ["REGION_NAME", "COMM_REGION_NAME", "NHSE_REGION_NAME"]}
 NATIONAL_LABEL = "England"
-MONTH_FORMATS = ["%b%Y", "%B%Y", "%b %Y", "%B %Y", "%Y-%m", "%Y-%m-%d", "%d%b%Y", "%d/%m/%Y"]
+MONTH_FORMATS = ["%d-%b-%y", "%d-%b-%Y", "%b%Y", "%B%Y", "%b %Y", "%B %Y", "%Y-%m", "%Y-%m-%d", "%d%b%Y", "%d/%m/%Y"]
 
 
 # ---------------------------------------------------------------- parsing helpers

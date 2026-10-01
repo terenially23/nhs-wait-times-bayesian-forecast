@@ -23,6 +23,7 @@ def test_unknown_band_is_nan():
 
 def test_parse_month_formats():
     assert parse_month(pd.Series(["OCT2022", "NOV2022"])).tolist() == [pd.Timestamp("2022-10-01"), pd.Timestamp("2022-11-01")]
+    assert parse_month(pd.Series(["01-Dec-22", "01-Feb-23"])).tolist() == [pd.Timestamp("2022-12-01"), pd.Timestamp("2023-02-01")]
     assert parse_month(pd.Series(["2022-10"]))[0] == pd.Timestamp("2022-10-01")
 
 
