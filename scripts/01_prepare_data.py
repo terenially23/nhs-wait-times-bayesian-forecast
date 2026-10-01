@@ -33,7 +33,8 @@ def main():
         if not files:
             sys.exit(f"No .csv/.zip files in {a.raw_dir}. Download the monthly 'Appointments in General "
                      "Practice' files (see README) or use --synthetic.")
-        out = build_regional_series(files, a.long_wait_days, statuses)
+        out = build_regional_series(files, a.long_wait_days, statuses,
+                                     provenance_out=a.out.with_name("release_provenance.csv"))
     validate_complete(out)
     a.out.parent.mkdir(parents=True, exist_ok=True)
     out.to_csv(a.out, index=False)

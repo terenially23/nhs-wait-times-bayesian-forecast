@@ -110,21 +110,73 @@ def aggregate_file(path: Path, statuses: tuple[str, ...] | None = ("Attended",),
     return out
 
 
+_MONTH_NAMES = {m: i for i, m in enumerate(
+    ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"], start=1)}
+
+
+def release_month_from_name(name: str) -> pd.Timestamp | None:
+    """Publication month from a file name, e.g. 'Appointments_in_General_Practice_December_2024.zip',
+    'Practice_Level_Crosstab_Dec_24.csv' -> 2024-12-01. None if no month+year is recognisable."""
+    s = name.lower()
+    m = re.search(r"(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*[\s_\-\.]*(20\d\d|\d\d)(?!\d)", s)
+    if not m:
+        return None
+    yr = int(m.group(2))
+    yr = yr + 2000 if yr < 100 else yr
+    return pd.Timestamp(year=yr, month=_MONTH_NAMES[m.group(1)], day=1)
+
+
+def select_final_months(per_release: dict[pd.Timestamp, pd.DataFrame], months: pd.DatetimeIndex,
+                        final_lag: int = 2) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Pick, for every target month, the release that makes it final.
+
+    NHS Digital refreshes the latest ``final_lag`` months in each release, so month m is settled in
+    the release published at m + final_lag. Rule: among available releases published >= m + final_lag
+    that contain m, take the LATEST (so a later restatement wins, but a provisional figure from an
+    earlier release never does). If no such release exists the month is flagged provisional and the
+    latest release containing it is used.
+
+    Returns (rows for the chosen figures, provenance table month -> release, provisional flag).
+    """
+    chosen, prov = [], []
+    for m in months:
+        eligible = [r for r, d in per_release.items() if r >= m + pd.DateOffset(months=final_lag)
+                    and (d["month"] == m).any()]
+        provisional = not eligible
+        pool = eligible or [r for r, d in per_release.items() if (d["month"] == m).any()]
+        if not pool:
+            prov.append({"month": m, "release": pd.NaT, "provisional": True})
+            continue
+        rel = max(pool)
+        chosen.append(per_release[rel][per_release[rel]["month"] == m])
+        prov.append({"month": m, "release": rel, "provisional": provisional})
+    return (pd.concat(chosen) if chosen else pd.DataFrame()), pd.DataFrame(prov)
+
+
 def build_regional_series(paths: list[Path], long_wait_days: int = config.LONG_WAIT_DAYS,
                           statuses: tuple[str, ...] | None = ("Attended",),
-                          source: str = "nhs_digital") -> pd.DataFrame:
-    """Aggregate raw files to a tidy regional monthly table.
+                          source: str = "nhs_digital", final_lag: int = 2,
+                          start: str = config.DATA_START, end: str = config.DATA_END,
+                          provenance_out: Path | None = None) -> pd.DataFrame:
+    """Aggregate raw release files to a tidy regional monthly table.
 
     rate = appointments booked > ``long_wait_days`` ahead / appointments with a known wait.
-    If a month appears in several files (e.g. a later release restating it), the file that
-    sorts last wins, so pass paths in release order.
+    Each file is a release; its publication month is read from the file name (fallback: the latest
+    month it contains). Month-to-release assignment follows ``select_final_months``.
     """
-    by_month: dict[pd.Timestamp, pd.DataFrame] = {}
+    per_release: dict[pd.Timestamp, pd.DataFrame] = {}
     for p in sorted(paths, key=lambda p: p.name):
         agg = aggregate_file(p, statuses)
-        for m, g in agg.groupby("month"):
-            by_month[m] = g
-    df = pd.concat(by_month.values())
+        rel = release_month_from_name(p.name) or agg["month"].max()
+        per_release[rel] = pd.concat([per_release[rel], agg]) if rel in per_release else agg
+    months = pd.date_range(start, end, freq="MS")
+    df, prov = select_final_months(per_release, months, final_lag)
+    if provenance_out is not None:
+        prov.to_csv(provenance_out, index=False)
+    bad = prov[prov.provisional]
+    if len(bad):
+        print("WARNING: months without a final release (provisional or missing):",
+              [m.strftime("%Y-%m") for m in bad.month])
     df["lower"] = df["wait"].map(wait_lower_bound_days)
     df = df.dropna(subset=["lower"])  # drop 'Unknown / Data Quality' from numerator and denominator
     df["is_long"] = df["lower"] > long_wait_days

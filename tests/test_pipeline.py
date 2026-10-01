@@ -4,7 +4,7 @@ import pytest
 
 from nhs_forecast import config
 from nhs_forecast.backtest import add_flags, coverage_table
-from nhs_forecast.data import (build_regional_series, expit, logit, parse_month,
+from nhs_forecast.data import (build_regional_series, expit, logit, parse_month, release_month_from_name,
                                region_logit_series, wait_lower_bound_days)
 from nhs_forecast.models import naive_rw_forecast, uc_forecast
 from nhs_forecast.synthetic import make_practice_level
@@ -71,3 +71,40 @@ def test_coverage_flags():
     assert r.in80.tolist() == [True, False] and r.in95.tolist() == [True, False]
     t = coverage_table(res)
     assert t[t.horizon == "all"].cov80.iloc[0] == 0.5
+
+
+def _release(vals: dict[str, float], months):
+    """Tiny per-release frame: one region, one wait band, count encodes which release it came from."""
+    return pd.DataFrame([{"region": "R", "month": pd.Timestamp(m), "wait": "Same Day", "count": vals[m]} for m in months])
+
+
+def test_select_final_months_uses_release_two_months_later():
+    from nhs_forecast.data import select_final_months
+    ts = pd.Timestamp
+    # Oct is in Oct (provisional), Nov, Dec releases; the figure encodes the release that reported it.
+    rel = {ts("2024-10-01"): _release({"2024-10-01": 1}, ["2024-10-01"]),
+           ts("2024-11-01"): _release({"2024-10-01": 2, "2024-11-01": 2}, ["2024-10-01", "2024-11-01"]),
+           ts("2024-12-01"): _release({"2024-10-01": 3, "2024-11-01": 3, "2024-12-01": 3},
+                                      ["2024-10-01", "2024-11-01", "2024-12-01"])}
+    df, prov = select_final_months(rel, pd.DatetimeIndex(["2024-10-01", "2024-11-01"]))
+    assert df.set_index("month")["count"][ts("2024-10-01")] == 3  # Dec release is final for Oct
+    p = prov.set_index("month")
+    assert not p.loc[ts("2024-10-01"), "provisional"]
+    assert p.loc[ts("2024-11-01"), "provisional"]  # Nov has no release >= Jan 2025
+
+
+def test_later_revision_wins_but_provisional_never_preferred():
+    from nhs_forecast.data import select_final_months
+    ts = pd.Timestamp
+    rel = {ts("2024-11-01"): _release({"2024-10-01": 2}, ["2024-10-01"]),
+           ts("2024-12-01"): _release({"2024-10-01": 3}, ["2024-10-01"]),
+           ts("2025-01-01"): _release({"2024-10-01": 4}, ["2024-10-01"])}
+    df, _ = select_final_months(rel, pd.DatetimeIndex(["2024-10-01"]))
+    assert df["count"].iloc[0] == 4
+
+
+def test_release_month_from_name():
+    f = release_month_from_name
+    assert f("Appointments_in_General_Practice_December_2024.zip") == pd.Timestamp("2024-12-01")
+    assert f("Practice_Level_Crosstab_Dec_24.csv") == pd.Timestamp("2024-12-01")
+    assert f("nothing.csv") is None
