@@ -36,8 +36,8 @@ def _members(source: Path, pred):
 
 def _candidates(source: Path) -> list[str]:
     with _members(source, lambda n: not n.lower().endswith("/") and "multi_csv" not in n.lower()
-                  and re.search(r"icb|nhser|ccg|region|lookup|names", n.lower()) is not None) as ms:
-        return sorted(n for n, _ in ms)[:60]
+                  and n.lower().endswith(".csv") and re.search(r"icb|nhs", n.lower()) is not None) as ms:
+        return sorted(n for n, _ in ms)
 
 
 def _find_col(cols, pattern):
@@ -47,9 +47,9 @@ def _find_col(cols, pattern):
 
 def _read_names(source: Path, kind: str) -> pd.DataFrame:
     """Read the Documents lookup for 'SICBL' or 'NHSER': returns gss, ods, name."""
-    key = kind.lower()
+    keys = {"SICBL": ("sicbl", "subicb"), "NHSER": ("nhser", "nhsengland")}[kind]
     with _members(source, lambda n: n.lower().endswith(".csv") and "documents" in n.lower()
-                  and key in re.sub(r"[^a-z]", "", n.lower().rsplit("/", 1)[-1])
+                  and any(k in re.sub(r"[^a-z]", "", n.lower().rsplit("/", 1)[-1]) for k in keys)
                   and "names" in n.lower()) as ms:
         if not ms:
             raise FileNotFoundError(
@@ -59,7 +59,8 @@ def _read_names(source: Path, kind: str) -> pd.DataFrame:
         with opener() as fh:
             df = pd.read_csv(fh, dtype=str, encoding="utf-8-sig")
     cols = list(df.columns)
-    gss, ods, nm = (_find_col(cols, rf"{kind}\d*CD"), _find_col(cols, rf"{kind}\d*CDH"), _find_col(cols, rf"{kind}\d*NM"))
+    # ONS suffixes the prefix with the vintage (SICBL23CD ...); match on the ending only.
+    gss, ods, nm = (_find_col(cols, r"[A-Za-z_ ]*\d*CD"), _find_col(cols, r"[A-Za-z_ ]*\d*CDH"), _find_col(cols, r"[A-Za-z_ ]*\d*NM"))
     if not (gss and ods and nm):
         raise KeyError(f"{name}: expected {kind}..CD/CDH/NM columns, saw {cols}")
     return df[[gss, ods, nm]].rename(columns={gss: "gss", ods: "ods", nm: "name"}).dropna(subset=["gss"])
