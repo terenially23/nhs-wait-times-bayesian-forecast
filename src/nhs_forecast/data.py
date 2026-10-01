@@ -32,6 +32,7 @@ OPTIONAL_ALIASES = {"status": ["APPT_STATUS"], "category": ["NATIONAL_CATEGORY"]
 # Series definition. The practice-level files carry sub-ICB but NOT region/ICB columns, so the
 # default is a single national series; 'sub_icb' gives one series per sub-ICB location.
 LEVEL_COLUMNS = {"national": None, "sub_icb": ["SUB_ICB_LOCATION_CODE"],
+                 "region_lookup": ["SUB_ICB_LOCATION_CODE"],  # sub-ICB aggregated, then mapped via geography.apply_lookup
                  "region": ["REGION_NAME", "COMM_REGION_NAME", "NHSE_REGION_NAME"]}
 NATIONAL_LABEL = "England"
 MONTH_FORMATS = ["%b%Y", "%B%Y", "%b %Y", "%B %Y", "%Y-%m", "%Y-%m-%d", "%d%b%Y", "%d/%m/%Y"]
@@ -182,7 +183,8 @@ def build_regional_series(paths: list[Path], long_wait_days: int = config.LONG_W
                           statuses: tuple[str, ...] | None = ("Attended",),
                           source: str = "nhs_digital", final_lag: int = 2, level: str = "national",
                           start: str = config.DATA_START, end: str = config.DATA_END,
-                          provenance_out: Path | None = None) -> pd.DataFrame:
+                          provenance_out: Path | None = None, lookup_path: Path | None = None,
+                          overrides_path: Path | None = None) -> pd.DataFrame:
     """Aggregate raw release files to a tidy regional monthly table.
 
     rate = appointments booked > ``long_wait_days`` ahead / appointments with a known wait.
@@ -202,6 +204,16 @@ def build_regional_series(paths: list[Path], long_wait_days: int = config.LONG_W
     if len(bad):
         print("WARNING: months without a final release (provisional or missing):",
               [m.strftime("%Y-%m") for m in bad.month])
+    if level == "region_lookup":
+        from .geography import apply_lookup
+        df, unmapped = apply_lookup(df, pd.read_csv(lookup_path, dtype=str),
+                                    pd.read_csv(overrides_path, dtype=str) if overrides_path and Path(overrides_path).exists() else None)
+        if len(unmapped):
+            tot = df["count"].sum() + unmapped["appointments"].sum()
+            print(f"WARNING: {len(unmapped)} sub-ICB codes not in lookup = "
+                  f"{unmapped.appointments.sum() / tot:.2%} of appointments; add them to the overrides CSV:")
+            print(unmapped.sort_values("appointments", ascending=False).head(15).to_string(index=False))
+            unmapped.to_csv(Path(provenance_out).with_name("unmapped_sub_icbs.csv") if provenance_out else "unmapped_sub_icbs.csv", index=False)
     df["lower"] = df["wait"].map(wait_lower_bound_days)
     df = df.dropna(subset=["lower"])  # drop 'Unknown / Data Quality' from numerator and denominator
     df["is_long"] = df["lower"] > long_wait_days

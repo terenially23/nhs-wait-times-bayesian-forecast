@@ -124,3 +124,24 @@ def test_national_level_no_status_column_and_split_csvs(tmp_path):
     assert out.region.unique().tolist() == ["England"] and len(out) == 25
     known = raw[~raw.TIME_BETWEEN_BOOK_AND_APPT.str.contains("Unknown")]
     assert out.total.sum() == known.COUNT_OF_APPOINTMENTS.sum()  # both halves summed, nothing dropped
+
+
+def test_region_lookup_from_mini_onspd(tmp_path):
+    import zipfile
+    from nhs_forecast.geography import apply_lookup, build_lookup
+    onspd = tmp_path / "ONSPD_FEB_2024_UK.zip"
+    data = "pcd,doterm,sicbl,nhser\nA1,,E38A,E40X\nA2,,E38A,E40X\nA3,202001,E38A,E40Y\nB1,,E38B,E40Y\nB2,,,E40Y\n"
+    sicbl = "SICBL23CD,SICBL23CDH,SICBL23NM\nE38A,15A,Sub A\nE38B,16B,Sub B\n"
+    nhser = "NHSER23CD,NHSER23CDH,NHSER23NM\nE40X,Y1,North\nE40Y,Y2,South\n"
+    with zipfile.ZipFile(onspd, "w") as z:
+        z.writestr("Data/ONSPD_FEB_2024_UK.csv", data)
+        z.writestr("Documents/SICBL names and codes UK as at 04_23.csv", sicbl)
+        z.writestr("Documents/NHSER names and codes EN as at 04_23.csv", nhser)
+    lk = build_lookup(onspd)
+    got = dict(zip(lk.sub_icb_code, lk.region))
+    assert got == {"15A": "North", "16B": "South"}  # terminated postcode A3 ignored
+    df = pd.DataFrame({"region": ["15A", "16B", "99Z"], "month": pd.Timestamp("2023-01-01"),
+                       "wait": "Same Day", "count": [10, 20, 5]})
+    out, unmapped = apply_lookup(df, lk)
+    assert out.set_index("region")["count"].to_dict() == {"North": 10, "South": 20}
+    assert unmapped.code.tolist() == ["99Z"]

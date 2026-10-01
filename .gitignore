@@ -10,4 +10,6 @@ data/processed/*
 # the aggregated regional table + provenance are tiny and are what the pipeline needs
 !data/processed/regional_monthly.csv
 !data/processed/release_provenance.csv
+!data/processed/sub_icb_region_lookup.csv
+!data/processed/unmapped_sub_icbs.csv
 outputs/
