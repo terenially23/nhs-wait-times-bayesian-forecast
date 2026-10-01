@@ -34,6 +34,12 @@ def _members(source: Path, pred):
         yield [(str(p), (lambda p=p: open(p, "rb"))) for p in rels]
 
 
+def _candidates(source: Path) -> list[str]:
+    with _members(source, lambda n: not n.lower().endswith("/") and "multi_csv" not in n.lower()
+                  and re.search(r"icb|nhser|ccg|region|lookup|names", n.lower()) is not None) as ms:
+        return sorted(n for n, _ in ms)[:60]
+
+
 def _find_col(cols, pattern):
     hits = [c for c in cols if re.fullmatch(pattern, c.strip(), flags=re.I)]
     return hits[0] if hits else None
@@ -46,7 +52,9 @@ def _read_names(source: Path, kind: str) -> pd.DataFrame:
                   and key in re.sub(r"[^a-z]", "", n.lower().rsplit("/", 1)[-1])
                   and "names" in n.lower()) as ms:
         if not ms:
-            raise FileNotFoundError(f"No Documents/*{kind}* names CSV found under {source}")
+            raise FileNotFoundError(
+                f"No Documents/*{kind}* names CSV found under {source}.\n"
+                f"Candidate files there:\n  " + "\n  ".join(_candidates(source)))
         name, opener = sorted(ms, key=lambda m: m[0])[-1]  # latest-named file
         with opener() as fh:
             df = pd.read_csv(fh, dtype=str, encoding="utf-8-sig")
