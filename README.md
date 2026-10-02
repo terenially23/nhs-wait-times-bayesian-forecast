@@ -84,6 +84,38 @@ Per-region ArviZ summaries, trace plots and `.nc` files are in `outputs/pymc_dia
   ahead may drive the autumn peak. I have not tested this; it is an obvious next step and would change what the model is
   actually forecasting.
 
+## Relationship to the dissertation
+
+This project extends *Mapping the Wait: Regional, Temporal and Socioeconomic Predictors of GP Appointment Delays in
+the NHS (2022–2024)*: same source (NHS Digital Appointments in General Practice), same window (Oct 2022 – Oct 2024), same
+release logic (Dec 2022 – Dec 2024 releases, because of the 3-month refresh), same region geography (ONSPD Feb 2024).
+The dissertation asks *which factors are associated with long waits* (practice-level negative-binomial mixed model);
+this project asks *can the regional long-wait rate be forecast with calibrated uncertainty*, using the seasonality and
+regional structure the dissertation identified (October and spring peaks, London lowest, South West highest).
+
+**Sanity check** ([`results/dissertation_crosscheck.md`](results/dissertation_crosscheck.md), `scripts/05_dissertation_crosscheck.py`).
+Raw aggregate rates here vs the dissertation's *adjusted* rate ratios (Table 1). This checks direction and ordering; it is not a replication:
+
+* **Calendar month vs January:** correlation 0.99 with Table 1. October is highest in both (1.47 here vs RR 1.36), then
+  September (1.27 vs 1.21) and April (1.18 vs 1.17). Month 4 of the top four differs (November here, May in the dissertation).
+  Only 2–3 years feed each month, and the raw ratios include the time trend.
+* **Region vs London:** Spearman rank correlation 0.86. London lowest and South West highest in both; North East and
+  Yorkshire / East of England / South East are all within 0.05 of each other here, so their relative order is not stable.
+
+**Differences in definition to be aware of (do not gloss over these at interview)**
+
+* *Long wait.* The dissertation text says "more than 15 days" but the category used starts at "15 to 21 Days", i.e.
+  **15 days or more**. This project uses bands whose lower bound is > 14 days, which is the same set of bands.
+* *Outcome.* The dissertation models **practice-level counts** with a log-offset for total appointments (a rate);
+  this project forecasts the **regional aggregate share**. Same quantity, different level of aggregation.
+* *Appointment status.* This project filters to "Attended" where the file has a status column. The dissertation does not
+  say it did. If it used all appointments, the like-for-like choice is `01_prepare_data.py --all-statuses`, which would also
+  remove the Oct/Nov 2022 inconsistency described above. Not yet re-run.
+* *Denominator.* "Unknown / Data Quality" is excluded from the denominator here; the dissertation's seven categories
+  also exclude it.
+* *Not carried over:* deprivation, rurality and GP staffing. The forecasting models use only the series' own history
+  (trend + seasonality), by region.
+
 ## Method and design choices
 
 * **Logit scale.** Rates are modelled as `logit(rate)` so forecasts and intervals stay inside (0,1); back-transforming
