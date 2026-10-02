@@ -23,6 +23,7 @@ def main():
                     help="series: one national series (default) or one per sub-ICB location")
     ap.add_argument("--lookup", type=Path, default=config.PROCESSED_DIR / "sub_icb_region_lookup.csv")
     ap.add_argument("--overrides", type=Path, default=config.ROOT / "data" / "external" / "sub_icb_region_overrides.csv")
+    ap.add_argument("--end", default=config.DATA_END, help="last month to build, e.g. 2025-04-01")
     ap.add_argument("--out", type=Path, default=config.REGIONAL_CSV)
     a = ap.parse_args()
     statuses = None if a.all_statuses else ("Attended",)
@@ -37,9 +38,9 @@ def main():
         if not files:
             sys.exit(f"No .csv/.zip files in {a.raw_dir}. Download the monthly 'Appointments in General "
                      "Practice' files (see README) or use --synthetic.")
-        out = build_regional_series(files, a.long_wait_days, statuses, level=a.level, lookup_path=a.lookup, overrides_path=a.overrides,
+        out = build_regional_series(files, a.long_wait_days, statuses, level=a.level, end=a.end, lookup_path=a.lookup, overrides_path=a.overrides,
                                      provenance_out=a.out.with_name("release_provenance.csv"))
-    validate_complete(out)
+    validate_complete(out, end=a.end)
     a.out.parent.mkdir(parents=True, exist_ok=True)
     out.to_csv(a.out, index=False)
     print(f"wrote {a.out}: {out.region.nunique()} regions x {out.month.nunique()} months, source={out.source.iloc[0]}")

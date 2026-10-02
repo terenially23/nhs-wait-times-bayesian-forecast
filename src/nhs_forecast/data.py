@@ -240,8 +240,11 @@ def validate_complete(df: pd.DataFrame, start: str = config.DATA_START, end: str
 
 
 def load_regional(path: Path = config.REGIONAL_CSV, start: str = config.DATA_START,
-                  end: str = config.DATA_END) -> pd.DataFrame:
+                  end: str | None = config.DATA_END) -> pd.DataFrame:
+    """Load the regional table. ``end=None`` keeps every month present in the file."""
     df = pd.read_csv(path, parse_dates=["month"])
+    if end is None:
+        end = df["month"].max()
     df = df[(df["month"] >= start) & (df["month"] <= end)]
     validate_complete(df, start, end)
     return df

@@ -13,6 +13,7 @@ SEED = 20241001
 DATA_START = "2022-10-01"
 DATA_END = "2024-10-01"
 TRAIN_END = "2023-12-01"  # train on Oct 2022 - Dec 2023; hold out 2024
+FORWARD_ORIGIN = "2024-10-01"  # forward test: train on everything to Oct 2024, forecast later months
 
 # "Long wait" = booked more than this many days before the appointment.
 # NHS Digital bands are: Same Day, 1 Day, 2-7, 8-14, 15-21, 22-28, >28, Unknown.
