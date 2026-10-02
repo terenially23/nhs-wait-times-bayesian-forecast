@@ -17,7 +17,7 @@ from nhs_forecast.models import get_forecaster
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--models", nargs="+", default=["uc", "naive"], choices=["uc", "pymc", "naive"])
+    ap.add_argument("--models", nargs="+", default=["uc", "naive"], choices=["uc", "pymc", "naive", "snaive"])
     ap.add_argument("--schemes", nargs="+", default=["fixed_origin", "rolling_origin"])
     ap.add_argument("--origin-step", type=int, default=3, help="months between rolling origins")
     ap.add_argument("--max-horizon", type=int, default=6)

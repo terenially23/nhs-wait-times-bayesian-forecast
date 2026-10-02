@@ -19,11 +19,11 @@ import pandas as pd
 from nhs_forecast import config
 from nhs_forecast.backtest import _score_rows, coverage_table, to_markdown
 from nhs_forecast.data import load_regional, region_logit_series
-from nhs_forecast.models import naive_rw_forecast
+from nhs_forecast.models import naive_rw_forecast, snaive_forecast
 from nhs_forecast.models.uc import uc_forecast
 from nhs_forecast.plotting import plot_forecasts
 
-NAMES = {"uc": "UnobservedComponents", "pymc": "PyMC", "naive": "Naive random walk"}
+NAMES = {"uc": "UnobservedComponents", "pymc": "PyMC", "naive": "Naive random walk", "snaive": "Seasonal naive (same month last year)"}
 
 
 def main():
@@ -56,6 +56,8 @@ def main():
                 fc = uc_forecast(y, horizon)
             elif m == "naive":
                 fc = naive_rw_forecast(y, horizon)
+            elif m == "snaive":
+                fc = snaive_forecast(y, horizon)
             else:
                 from nhs_forecast.models.bayes import diagnostics, pymc_forecast
                 fc, idata = pymc_forecast(y, horizon, seed=a.seed + ri, draws=a.draws, tune=a.tune, chains=a.chains)

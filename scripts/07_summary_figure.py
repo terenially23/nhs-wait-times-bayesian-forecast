@@ -11,8 +11,8 @@ import pandas as pd
 
 from nhs_forecast import config
 
-COL = {"uc": "#d98324", "pymc": "#1f5fa8", "naive": "#8c8c8c"}
-LAB = {"uc": "UnobservedComponents", "pymc": "PyMC (Bayesian)", "naive": "Naive random walk"}
+COL = {"uc": "#d98324", "pymc": "#1f5fa8", "naive": "#8c8c8c", "snaive": "#5aa469"}
+LAB = {"uc": "UnobservedComponents", "pymc": "PyMC (Bayesian)", "naive": "Naive random walk", "snaive": "Seasonal naive"}
 tests = [("2024 hold-out\n(train Oct 2022 - Dec 2023)", config.OUTPUT_DIR / "tables" / "coverage_table.csv", "fixed_origin"),
          ("Forward test\n(train to Oct 2024, forecast later months)", config.OUTPUT_DIR / "forward" / "coverage_table.csv", "forward_origin")]
 
@@ -21,11 +21,11 @@ for j, (title, path, scheme) in enumerate(tests):
     t = pd.read_csv(path)
     t = t[(t.scheme == scheme) & (t.horizon == "all")].set_index("model")
     ax = axes[0, j]
-    w = 0.26
-    for i, m in enumerate(["uc", "pymc", "naive"]):
+    w = 0.21
+    for i, m in enumerate(["uc", "pymc", "naive", "snaive"]):
         if m not in t.index:
             continue
-        xs = [0 + (i - 1) * w, 1 + (i - 1) * w]
+        xs = [0 + (i - 1.5) * w, 1 + (i - 1.5) * w]
         vals = [t.loc[m, "cov80"] * 100, t.loc[m, "cov95"] * 100]
         bars = ax.bar(xs, vals, w * 0.92, color=COL[m], label=LAB[m])
         for x, v in zip(xs, vals):
@@ -42,7 +42,7 @@ for j, (title, path, scheme) in enumerate(tests):
     if j == 0:
         ax.legend(frameon=False, fontsize=8, loc="lower left")
     ax2 = axes[1, j]
-    ms = [m for m in ["uc", "pymc", "naive"] if m in t.index]
+    ms = [m for m in ["uc", "pymc", "naive", "snaive"] if m in t.index]
     ax2.barh([LAB[m] for m in ms], [t.loc[m, "mae_pp"] for m in ms], color=[COL[m] for m in ms], height=0.6)
     for k, m in enumerate(ms):
         ax2.text(t.loc[m, "mae_pp"] + 0.04, k, f"{t.loc[m, 'mae_pp']:.1f} pp", va="center", fontsize=8)

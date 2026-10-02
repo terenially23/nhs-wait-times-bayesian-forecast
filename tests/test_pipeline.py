@@ -146,3 +146,10 @@ def test_region_lookup_from_mini_onspd(tmp_path):
     out, unmapped = apply_lookup(df, lk)
     assert out.set_index("region")["count"].to_dict() == {"North": 10, "South": 20}
     assert unmapped.code.tolist() == ["99Z"]
+
+
+def test_snaive_repeats_last_year(regional):
+    from nhs_forecast.models import snaive_forecast
+    y = region_logit_series(regional, "London")[: config.TRAIN_END]
+    fc = snaive_forecast(y, 3)
+    assert np.allclose(fc.q500.values, y.values[-12:-9])  # Jan-Mar 2024 <- Jan-Mar 2023
