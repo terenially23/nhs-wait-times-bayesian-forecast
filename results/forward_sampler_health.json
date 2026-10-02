@@ -1,0 +1,44 @@
+{
+  "East of England": {
+    "max_rhat": 1.0,
+    "min_ess_bulk": 628.0,
+    "min_ess_tail": 526.0,
+    "divergences": 2
+  },
+  "London": {
+    "max_rhat": 1.0,
+    "min_ess_bulk": 808.0,
+    "min_ess_tail": 812.0,
+    "divergences": 4
+  },
+  "Midlands": {
+    "max_rhat": 1.0,
+    "min_ess_bulk": 687.0,
+    "min_ess_tail": 684.0,
+    "divergences": 1
+  },
+  "North East and Yorkshire": {
+    "max_rhat": 1.01,
+    "min_ess_bulk": 700.0,
+    "min_ess_tail": 942.0,
+    "divergences": 3
+  },
+  "North West": {
+    "max_rhat": 1.01,
+    "min_ess_bulk": 674.0,
+    "min_ess_tail": 725.0,
+    "divergences": 2
+  },
+  "South East": {
+    "max_rhat": 1.01,
+    "min_ess_bulk": 523.0,
+    "min_ess_tail": 405.0,
+    "divergences": 2
+  },
+  "South West": {
+    "max_rhat": 1.0,
+    "min_ess_bulk": 765.0,
+    "min_ess_tail": 591.0,
+    "divergences": 1
+  }
+}

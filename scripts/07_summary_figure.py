@@ -29,18 +29,16 @@ for j, (title, path, scheme) in enumerate(tests):
         vals = [t.loc[m, "cov80"] * 100, t.loc[m, "cov95"] * 100]
         bars = ax.bar(xs, vals, w * 0.92, color=COL[m], label=LAB[m])
         for x, v in zip(xs, vals):
-            ax.text(x, v + 1.5, f"{v:.0f}%", ha="center", fontsize=8)
+            ax.text(x, v + 1.5, f"{v:.0f}", ha="center", fontsize=8)
     for x, nom in ((0, 80), (1, 95)):
         ax.hlines(nom, x - 0.45, x + 0.45, color="black", lw=1.6, ls="--")
         ax.text(x + 0.46, nom, f"target {nom}%", va="center", fontsize=8)
     ax.set_xticks([0, 1], ["80% interval", "95% interval"])
     ax.set_ylim(0, 112)
     ax.set_xlim(-0.55, 1.85)
-    ax.set_ylabel("% of real values inside the interval" if j == 0 else "")
+    ax.set_ylabel("% of real values inside the interval (bar labels in %)" if j == 0 else "", fontsize=9)
     ax.set_title(f"{title}\nn = {int(t['n'].iloc[0])} region-month forecasts", fontsize=10)
     ax.spines[["top", "right"]].set_visible(False)
-    if j == 0:
-        ax.legend(frameon=False, fontsize=8, loc="lower left")
     ax2 = axes[1, j]
     ms = [m for m in ["uc", "pymc", "naive", "snaive"] if m in t.index]
     ax2.barh([LAB[m] for m in ms], [t.loc[m, "mae_pp"] for m in ms], color=[COL[m] for m in ms], height=0.6)
@@ -52,7 +50,9 @@ for j, (title, path, scheme) in enumerate(tests):
 src = pd.read_csv(config.REGIONAL_CSV, nrows=1)["source"].iloc[0]
 tag = "   |   SYNTHETIC DATA" if src == "synthetic" else ""
 fig.suptitle("Forecasting GP long-wait rates: how trustworthy are the prediction intervals?" + tag, fontsize=12, y=0.995)
-fig.tight_layout()
+h, l = axes[0, 0].get_legend_handles_labels()
+fig.legend(h, l, loc="lower center", ncol=4, frameon=False, fontsize=9)
+fig.tight_layout(rect=(0, 0.04, 1, 1))
 (config.ROOT / "results").mkdir(exist_ok=True)
 fig.savefig(config.ROOT / "results" / "summary.png", dpi=150)
 print("wrote results/summary.png")

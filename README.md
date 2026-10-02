@@ -1,153 +1,156 @@
 # Probabilistic forecasting of NHS GP long-wait appointment rates
 
-Short-term (3–6 month) forecasts of the share of GP appointments booked **more than 14 days ahead**,
-by NHS England region, with prediction intervals judged on **calibration (interval coverage)** rather
-than point accuracy. Two structural time-series models are compared: `statsmodels` `UnobservedComponents`
-(Kalman filter / maximum likelihood) and a fully Bayesian `PyMC` model, plus a random-walk benchmark.
+An extension of my MSc dissertation, *Mapping the Wait: Regional, Temporal and Socioeconomic Predictors of GP
+Appointment Delays in the NHS (2022–2024)*. The dissertation asked **what is associated with long waits**. This project
+asks **can we forecast them a few months ahead, and can we trust the uncertainty around the forecast?**
 
-**Data used: real NHS Digital "Appointments in General Practice" practice-level crosstab releases,
-Dec 2022 – Dec 2024 releases, covering Oct 2022 – Oct 2024.** (Nothing in `results/` is synthetic.)
+* **Forecast target:** the **long-wait rate** = the share of GP appointments booked **15 or more days ahead**, for each of
+  the **7 NHS England regions**, month by month, 3–6 months ahead.
+* **Models:** a Bayesian structural time series (trend + seasonality) fitted two ways, `statsmodels`
+  `UnobservedComponents` and a Bayesian model in `PyMC`, compared with two naive baselines.
+* **How they are judged:** primarily **interval coverage**: do about 80% (95%) of the real values land inside the 80% (95%)
+  prediction interval? Point error (RMSE/MAE) is reported too, for reference.
+* **Data:** real NHS Digital *Appointments in General Practice* practice-level releases (Dec 2022 – Jun 2025 releases),
+  covering Oct 2022 – Apr 2025. **No synthetic data in any result below.**
 
-## Headline results (held-out 2024, trained on Oct 2022 – Dec 2023)
+![Summary: interval coverage and typical error, per model and test](results/summary.png)
 
-Full table: [`results/coverage_table.md`](results/coverage_table.md). Nominal coverage is 80% / 95%.
-Pooled over 7 regions; `n` is the number of region-month forecasts scored.
+## What I found
 
-| Scheme | Model | n | 80% cov. | 95% cov. | 95% width (pp) | Interval score (95%) | RMSE (pp) |
-|---|---|---|---|---|---|---|---|
-| Fixed origin (Dec 2023, h=1..10) | **UC** | 70 | **49%** | **76%** | 4.2 | 12.9 | 1.87 |
-| | **PyMC** | 70 | **83%** | **99%** | 9.6 | 9.6 | 1.76 |
-| | Naive RW | 70 | 99% | 100% | 16.4 | 16.4 | 3.00 |
-| Rolling origin (refit every 3 months, h≤6) | **UC** | 119 | 61% | 79% | 5.9 | 17.7 | 2.29 |
-| | **PyMC** | 119 | 77% | 93% | 7.7 | 15.1 | 2.14 |
-| | Naive RW | 119 | 89% | 94% | 11.8 | 18.4 | 2.47 |
+Two tests, both against real figures the models never saw. Full tables:
+[`results/coverage_table.md`](results/coverage_table.md) (2024 hold-out) and
+[`results/forward_coverage_table.md`](results/forward_coverage_table.md) (forward test). Pooled over 7 regions.
 
-What this says:
+| | Model | 80% interval covers | 95% interval covers | 95% width (pp) | Typical error (MAE, pp) |
+|---|---|---|---|---|---|
+| **Test 1: 2024 hold-out** (train Oct 2022 – Dec 2023, 15 months; forecast Jan–Oct 2024; n = 70) | UnobservedComponents | 59% | 81% | 5.0 | 1.6 |
+| | **PyMC** | **93%** | **100%** | 10.6 | 1.6 |
+| | Naive random walk | 94% | 100% | 17.2 | 1.9 |
+| | Seasonal naive (same month last year) | 56% | 73% | 3.7 | 1.4 |
+| **Test 2: forward test** (train to Oct 2024, 25 months; forecast Nov 2024 – Apr 2025; n = 42) | UnobservedComponents | 100% | 100% | 6.4 | 0.7 |
+| | PyMC | 100% | 100% | 10.5 | 1.0 |
+| | Naive random walk | 19% | 57% | 18.4 | 7.2 |
+| | Seasonal naive | 95% | 100% | 5.8 | 1.2 |
 
-* **UC is over-confident.** Its intervals are too narrow (76% of actuals inside the 95% interval; 49% inside the 80%).
-* **PyMC is close to calibrated and much sharper than the naive benchmark** (fixed-origin 80%: 83%; rolling 95%: 93%).
-  Fixed-origin 95% coverage of 99% means it is somewhat conservative at long horizons.
-* **The naive random walk "wins" coverage only by being very wide**; the interval score (which penalises width as
-  well as misses) ranks PyMC best in both schemes. The random walk is better on point accuracy at h=1–2 (fixed origin,
-  1-month-ahead RMSE well below the seasonal models), which is worth being straightforward about.
-* **One event drives much of the miss.** October 2024 jumped in every region (e.g. East of England 17.7% → 25.3%; 22–29% outside London, London 9.3% → 11.8%),
-  above anything in the 2022–23 training window. UC misses it in 6 of 7 regions. PyMC contains it at 95% in all 7 only
-  because its intervals widen, and at 80% in just 2 of 7. **Excluding Oct 2024, fixed-origin coverage is PyMC 89% / 98%,
-  UC 54% / 83%** (63 forecasts).
-* **Both seasonal models under-forecast Jan 2024** by ~1.6–1.9 pp at h=1 (mean signed error, fixed origin). That is a
-  start-point/seasonal-shape bias, not noise.
+Plain-English reading:
 
-### Caveats on these numbers (please read before quoting them)
+1. **PyMC gave the most trustworthy intervals in the 2024 hold-out.** About 93% of real values fell inside its 80%
+   interval (target 80%) and all fell inside the 95% one, so if anything it is a little cautious. UnobservedComponents (UC)
+   was over-confident: its 80% interval caught 59% and its 95% interval 81%, and it got worse the further ahead it
+   forecast (32% / 57% at 7+ months).
+2. **The structural models did *not* beat "same month last year" on point accuracy in 2024** (seasonal naive error 1.4 pp vs
+   1.6 pp). Seasonal naive's intervals, though, are far too narrow (56% / 73%). So the value of the models is the
+   *calibrated uncertainty*, not a more accurate central forecast. That is worth saying plainly.
+3. **October 2024 was the hard month.** Every region jumped well above anything in the 2022–23 training window (national
+   rate 25.1% vs 21.6% a year earlier). Excluding that month, PyMC covers 95% / 100% and UC 63% / 86%. For October
+   2024 alone, PyMC's intervals contained 71% (80%) and 100% (95%) of regions; UC's only 14% and 43%.
+4. **With two full seasonal cycles of training (Test 2), both models did much better:** UC and PyMC contained every
+   real value, with typical error of 0.7 and 1.0 pp (vs 1.6 pp in Test 1). UC was both the most accurate and the sharper of the
+   two; PyMC's intervals are wider (10.5 vs 6.4 pp), i.e. more cautious than needed here. This is consistent with
+   "more history helps", but it is **not proven**: the two tests also cover different months (Test 1 includes the Oct 2024
+   spike; Test 2's Nov 2024 – Apr 2025 is calmer).
+5. **The plain random walk is a poor benchmark in Test 2** (19% / 57%) because its forecast origin *is* the October peak,
+   so it carries the spike forward as if permanent. That is why I added the seasonal naive baseline as the fairer comparison.
+6. **After the spike the level settled higher, not back to the old baseline:** national rate about 1 pp above the same month a
+   year earlier from Dec 2024 to Apr 2025 (0.8–1.1 pp; e.g. 17.2% vs 16.3% in Dec; 19.1% vs 18.1% in Apr), after +3.5 pp in October and +2.0 pp in November.
 
-1. **Regions are strongly correlated.** All seven regions rise and fall together, so 70 pooled forecasts behave more like
-   10 independent ones. The Wilson intervals in the table (which assume independence) are therefore too narrow, and the
-   coverage percentages are noisy. Treat them as evidence about *direction* (UC over-confident), not precise rates.
-2. **Only 15 training months** = 1.25 seasonal cycles. Seasonality is learned largely from two autumn peaks (Oct 2022,
-   Sep–Oct 2023). Any 2024 behaviour not seen in 2022–23 (e.g. the larger Oct 2024 peak) is, by construction, a surprise.
-3. **A single held-out year.** There is one 2024; rolling origins re-use the same months at different horizons.
-4. Rolling-origin results use origins every 3 months (Dec 23, Mar 24, Jun 24, Sep 24); `--origin-step 1` is available.
+### Forecast plots (real data: black = actual, blue = forecast median with 80%/95% intervals, red × = outside 95%)
 
-## Sampler health (PyMC)
+2024 hold-out (trained on Oct 2022 – Dec 2023):
 
-Fixed-origin fits, one per region ([`results/sampler_health.json`](results/sampler_health.json)):
-max R-hat 1.00–1.02, min bulk ESS 448–859, **4–13 divergent transitions out of 2000 draws per region (0.2–0.65%)**.
-R-hat/ESS are fine; the residual divergences are not zero, reflecting weak identification of the level-innovation scale
-with so few observations (a `sigma → 0` funnel), so the tails of that parameter's posterior should be treated cautiously.
-This is comparable to the one synthetic-data region I tested during development (9 divergences), so there is no sign that
-real data behaves worse than the synthetic generator; there was no full synthetic run to compare against. Sampler
-diagnostics were saved for the fixed-origin fits only, not for each rolling-origin refit.
-Per-region ArviZ summaries, trace plots and `.nc` files are in `outputs/pymc_diagnostics/` after a run.
+![PyMC, 2024 hold-out](results/forecast_pymc.png)
+![UnobservedComponents, 2024 hold-out](results/forecast_uc.png)
 
-## Plots
+Forward test (trained to Oct 2024, forecasting Nov 2024 – Apr 2025):
 
-* [`results/forecast_pymc.png`](results/forecast_pymc.png), [`results/forecast_uc.png`](results/forecast_uc.png): per-region
-  forecast median with 80%/95% intervals over actuals; red crosses mark held-out actuals outside the 95% interval.
+![PyMC, forward test](results/forward_pymc.png)
+![UnobservedComponents, forward test](results/forward_uc.png)
+
+### Caveats on these numbers (read before quoting them)
+
+1. **Regions move together.** All seven rise and fall at the same time, so 70 (or 42) pooled forecasts behave more like
+   10 (or 6) independent ones. The confidence intervals in the tables assume independence and are too narrow. "100%" in Test 2
+   means *nothing was missed*, which is weaker evidence of calibration than it sounds; treat coverage as direction, not precise rates.
+2. **Short history.** 15 training months is 1.25 seasonal cycles; 25 is about two. Seasonality is learned from very few peaks.
+3. **Seasonal naive's spread** is estimated from only ~3 year-on-year differences in Test 1, so its interval width is itself unreliable.
+4. **One hold-out year and one 6-month forward window.** Rolling-origin results (refit every 3 months, h ≤ 6, n = 119) are
+   in the table file; they tell the same story (PyMC 78% / 93%, UC 61% / 76%, seasonal naive 57% / 72%, random walk 87% / 93%).
+
+### Sampler health (PyMC)
+
+* 2024 hold-out fits (one per region): max R-hat 1.01, minimum bulk ESS 581, **2–14 divergent transitions per 2,000 draws
+  (0.1–0.7%)**. Forward-test fits: max R-hat 1.01, minimum bulk ESS 523, **1–4 divergences** (fewer with 25 observations).
+* R-hat and ESS are good, but divergences are not zero: with so few observations the level-innovation scale is weakly
+  identified (a `sigma → 0` funnel), so I would not lean on the tails of that one parameter. Diagnostics were saved for the
+  single-origin fits only, not for each rolling-origin refit.
+  Per-region ArviZ summaries, trace plots and `.nc` files are written to `outputs/pymc_diagnostics/` when you run the pipeline.
+  Headline numbers: [`results/sampler_health.json`](results/sampler_health.json),
+  [`results/forward_sampler_health.json`](results/forward_sampler_health.json).
+
+## How this connects to the dissertation
+
+Same source, same window start, same release logic (Dec 2022 – Dec 2024 releases because of the 3-month refresh), same
+ONS Postcode Directory (Feb 2024) for geography. I carried over the dissertation's finding of **October and spring peaks**
+into the model design (see below), and checked that the series reproduce the dissertation's patterns
+([`results/dissertation_crosscheck.md`](results/dissertation_crosscheck.md)):
+
+* **Calendar month vs January:** correlation **0.99** with the dissertation's Table 1 rate ratios, and the **same top four
+  months (October, September, April, May)**. Several months match almost exactly (e.g. Feb 1.024 vs 1.024; Nov 1.122 vs 1.123).
+* **Region vs London:** rank correlation **0.93**; London lowest and South West highest in both.
+* This is a sanity check on direction and ordering using raw aggregate rates; Table 1 is a practice-level mixed model adjusted
+  for deprivation, rurality and staffing, so they are not expected to match exactly.
+
+Differences to be aware of: the dissertation models **practice-level counts** with an offset (a rate); this project forecasts
+the **regional aggregate share**. The dissertation text says "more than 15 days" but its category begins at "15 to 21 Days",
+i.e. **15 days or more**; this project uses the same bands. Deprivation, rurality and GP staffing are not used here: the
+forecasts use each region's own history (trend + seasonality) only.
 
 ## Data and definitions
 
 * **Source:** NHS Digital Appointments in General Practice, practice-level crosstab zips (`Practice_Level_Crosstab_<Mon>_<YY>.zip`).
-* **Long wait:** `TIME_BETWEEN_BOOK_AND_APPT` band lower bound > 14 days (15–21, 22–28, >28 days).
-  Rate = long-wait appointments / appointments with a known wait ("Unknown / Data Quality" excluded from both).
-  The 14-day cut-off is an assumption; change with `--long-wait-days`.
-* **Attended only** where the file has `APPT_STATUS`. **The Dec 2022 and Jan 2023 releases have no status column**, so
-  **Oct and Nov 2022 are not filtered to "Attended"**. Those two months are slightly less comparable with the rest
-  (rates in Oct 2022 and Oct 2023 are close, so the effect looks small, but it is untested).
-* **Which release supplies which month (3-month refresh):** each release only finalises data from ~2 months earlier.
-  For every month the figure comes from the latest release published **≥ 2 months later** that contains it
-  (`select_final_months` in `src/nhs_forecast/data.py`; provenance written to `data/processed/release_provenance.csv`).
-  All 25 months had a final release. Large months are split over several CSVs in a zip and are summed.
-* **Regions:** the appointment files have only `SUB_ICB_LOCATION_CODE`. Sub-ICB → NHS England region was derived from the
-  ONS Postcode Directory (Feb 2024): the majority `nhser` over each sub-ICB's live postcodes, bridged to ODS codes via the
-  ONSPD `Documents/` lookups (`scripts/00b_build_region_lookup.py`; 106 sub-ICBs → 7 regions, none with a split majority).
-  No sub-ICB codes in the data were left unmapped. The lookup uses April 2023 boundaries.
-* **Not controlled for:** appointment *type*. The files include `NATIONAL_CATEGORY`; planned/vaccination clinics booked far
-  ahead may drive the autumn peak. I have not tested this; it is an obvious next step and would change what the model is
-  actually forecasting.
-
-## Relationship to the dissertation
-
-This project extends *Mapping the Wait: Regional, Temporal and Socioeconomic Predictors of GP Appointment Delays in
-the NHS (2022–2024)*: same source (NHS Digital Appointments in General Practice), same window (Oct 2022 – Oct 2024), same
-release logic (Dec 2022 – Dec 2024 releases, because of the 3-month refresh), same region geography (ONSPD Feb 2024).
-The dissertation asks *which factors are associated with long waits* (practice-level negative-binomial mixed model);
-this project asks *can the regional long-wait rate be forecast with calibrated uncertainty*, using the seasonality and
-regional structure the dissertation identified (October and spring peaks, London lowest, South West highest).
-
-**Sanity check** ([`results/dissertation_crosscheck.md`](results/dissertation_crosscheck.md), `scripts/05_dissertation_crosscheck.py`).
-Raw aggregate rates here vs the dissertation's *adjusted* rate ratios (Table 1). This checks direction and ordering; it is not a replication:
-
-* **Calendar month vs January:** correlation 0.99 with Table 1. October is highest in both (1.47 here vs RR 1.36), then
-  September (1.27 vs 1.21) and April (1.18 vs 1.17). Month 4 of the top four differs (November here, May in the dissertation).
-  Only 2–3 years feed each month, and the raw ratios include the time trend.
-* **Region vs London:** Spearman rank correlation 0.86. London lowest and South West highest in both; North East and
-  Yorkshire / East of England / South East are all within 0.05 of each other here, so their relative order is not stable.
-
-**Differences in definition to be aware of (do not gloss over these at interview)**
-
-* *Long wait.* The dissertation text says "more than 15 days" but the category used starts at "15 to 21 Days", i.e.
-  **15 days or more**. This project uses bands whose lower bound is > 14 days, which is the same set of bands.
-* *Outcome.* The dissertation models **practice-level counts** with a log-offset for total appointments (a rate);
-  this project forecasts the **regional aggregate share**. Same quantity, different level of aggregation.
-* *Appointment status.* This project filters to "Attended" where the file has a status column. The dissertation does not
-  say it did. If it used all appointments, the like-for-like choice is `01_prepare_data.py --all-statuses`, which would also
-  remove the Oct/Nov 2022 inconsistency described above. Not yet re-run.
-* *Denominator.* "Unknown / Data Quality" is excluded from the denominator here; the dissertation's seven categories
-  also exclude it.
-* *Not carried over:* deprivation, rurality and GP staffing. The forecasting models use only the series' own history
-  (trend + seasonality), by region.
+* **Long wait:** `TIME_BETWEEN_BOOK_AND_APPT` bands "15 to 21 Days", "22 to 28 Days", "More than 28 Days". Rate = long-wait
+  appointments / appointments with a known wait ("Unknown / Data Quality" excluded). **All appointment statuses are included**
+  (no "Attended" filter), which matches the dissertation's pattern most closely and is consistent across all months (the Dec 2022
+  and Jan 2023 releases have no status column, so a filter could not have been applied evenly).
+* **Which release supplies which month (3-month refresh):** each month's figure comes from the latest release published
+  **≥ 2 months later** that contains it (`select_final_months` in `src/nhs_forecast/data.py`; provenance in
+  `data/processed/release_provenance.csv`). All 31 months have a final release. Months split over several CSVs in a zip are summed.
+* **Regions:** the files have only `SUB_ICB_LOCATION_CODE`. I derived sub-ICB → NHS England region from the ONS Postcode Directory
+  (majority `nhser` over each sub-ICB's live postcodes, bridged to ODS codes through the ONSPD `Documents/` lookups):
+  106 sub-ICBs → 7 regions, none with a split majority, and the build reported no unmapped sub-ICB codes (`scripts/00b_build_region_lookup.py`).
+* **Not controlled for:** appointment *type* (`NATIONAL_CATEGORY`). Planned or vaccination clinics booked far ahead may drive the
+  autumn peak; I have not tested this.
 
 ## Method and design choices
 
-* **Logit scale.** Rates are modelled as `logit(rate)` so forecasts and intervals stay inside (0,1); back-transforming
-  quantiles is exact because the logit is monotone. Regions are fitted separately.
-* **Structure (identical in both models, for a fair comparison).** Local level with constant drift (`lldtrend`, random-walk
-  level + drift) + **deterministic trigonometric seasonality with 2 harmonics** + observation noise.
-  Two harmonics let the annual cycle carry an autumn peak and a semi-annual component for the spring bump, using 4
-  parameters rather than 11 free monthly effects, which matters with 15 observations. Seasonality is fixed, not
-  stochastic, for the same reason. The cost: two harmonics smooth a sharp ~2-month autumn peak, which likely contributes to
-  under-predicting peak height. `--trend lltrend|llevel` is available for UC.
-* **UC (`models/uc.py`).** `statsmodels.tsa.UnobservedComponents`, maximum-likelihood variances, Kalman-filter forecast
-  variance. Intervals condition on the *estimated* variances, ignoring parameter uncertainty; with ~15 points the ML
-  variances are noisy and tend to be under-estimated, which is the most likely reason for under-coverage here.
-  ("Bayesian structural time series" is strictly the PyMC model; UC is its frequentist state-space cousin.)
-* **PyMC (`models/bayes.py`).** Same model with weakly informative priors in logit units. The latent random walk is
-  **marginalised analytically** (`y ~ MvNormal(level0 + drift·t + Xβ, σ_level²·min(s,s') + σ_obs²I)`), so NUTS samples only
-  six parameters; an earlier version that sampled the latent states explicitly gave dozens of divergences and R-hat > 1.05.
-  Forecasts are the exact Gaussian conditional given the data, drawn once per posterior sample, so they include
-  parameter uncertainty. `target_accept=0.99`, 4 chains, seeded.
-* **Naive benchmark (`models/naive.py`).** Logit random walk with variance estimated from training differences.
-* **Validation.** Primary metric is empirical coverage of the 80% and 95% central intervals (Wilson CIs), with mean width
-  and the Gneiting–Raftery interval score (rewards sharpness subject to calibration), and RMSE/MAE for reference.
-  *Fixed origin:* fit once at Dec 2023, score Jan–Oct 2024 (h=1..10). *Rolling origin:* expanding-window refit, h≤6.
-  Pooled over regions; reported by horizon bucket (1–3, 4–6, 7+).
+* **Logit scale.** Rates are modelled as `logit(rate)` so forecasts and intervals stay in (0, 1); back-transforming quantiles is
+  exact because the logit is monotone. Each region is fitted separately.
+* **Structure (identical in UC and PyMC, so the comparison is fair).** Random-walk level with constant drift (`lldtrend`) +
+  **deterministic trigonometric seasonality with 2 harmonics** + observation noise. Two harmonics let the annual cycle carry the
+  autumn peak and a semi-annual component carry the spring bump, using 4 parameters instead of 11 free monthly effects, which
+  matters with 15–25 observations. Seasonality is fixed, not stochastic, for the same reason. The cost: two harmonics smooth a
+  sharp ~2-month peak, which probably contributes to under-predicting peak height.
+* **UC (`models/uc.py`).** `statsmodels.tsa.UnobservedComponents`: maximum-likelihood variances, Kalman-filter forecast variance.
+  Intervals condition on the *estimated* variances and ignore parameter uncertainty; with ~15 points the ML variances are noisy and
+  tend to be too small, which is the most likely reason for its under-coverage in Test 1.
+* **PyMC (`models/bayes.py`).** The same model with weakly informative priors (logit units). The latent random walk is
+  **marginalised analytically** (`y ~ MvNormal(level0 + drift·t + Xβ, σ_level²·min(s,s') + σ_obs²I)`), so NUTS samples only six
+  parameters (an earlier version sampling all latent states gave dozens of divergences and R-hat > 1.05). Forecasts are the exact
+  Gaussian conditional given the data, drawn once per posterior sample, so they include parameter uncertainty. `target_accept=0.99`,
+  4 chains, seeded.
+* **Baselines.** *Naive random walk* (last value, variance from training differences) and *seasonal naive* (same month last year,
+  spread from year-on-year differences; `models/naive.py`).
+* **Validation.** Primary metric: empirical coverage of the 80% and 95% central intervals (Wilson CIs), alongside mean width, the
+  interval score (rewards sharp intervals subject to calibration), and RMSE/MAE. *Fixed origin:* fit once, score every later month.
+  *Rolling origin:* expanding-window refit every 3 months, horizon ≤ 6. Reported by horizon bucket (1–3, 4–6, 7+).
 
 ## Things I would do next
 
-1. More history (the NHS series is available from earlier than Oct 2022) so seasonality is learned from ≥3 cycles.
+1. More history (the NHS series starts earlier than Oct 2022) so seasonality is learned from three or more cycles.
 2. Break out or exclude planned/vaccination appointment categories and see whether the autumn peak is a category effect.
-3. Hierarchical PyMC model sharing seasonal shape across regions (partial pooling), which also addresses the correlation
-   caveat above; and a parameter-uncertainty-aware UC interval (bootstrap or Gaussian approximation) as a fairer UC baseline.
-4. Calibrate the horizon-dependent width (PyMC is conservative at long horizons, over-confident at h=1–3: 71% at 80%).
+3. A hierarchical PyMC model sharing seasonal shape across regions (partial pooling), which also addresses the correlated-regions caveat;
+   and a parameter-uncertainty-aware UC interval as a fairer UC baseline.
+4. Calibrate horizon-dependent width (PyMC is cautious at long horizons).
 
 ## Reproduce
 
@@ -155,22 +158,26 @@ Raw aggregate rates here vs the dissertation's *adjusted* rate ratios (Table 1).
 python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\Activate.ps1
 pip install -r requirements.txt -e .
 
-# 1. (once, locally; raw files are large and git-ignored)
-#    put the release zips in data/raw/, then:
-python scripts/00_check_headers.py                      # inspect schema / release months
-python scripts/00b_build_region_lookup.py --onspd path/to/ONSPD_FEB_2024_UK.zip
-python scripts/01_prepare_data.py --level region_lookup # -> data/processed/regional_monthly.csv (committed)
-
-# 2. everything downstream runs from the committed regional table (~15-25 min, mostly PyMC)
+# Everything downstream runs from the committed regional table (~30-40 min, mostly PyMC)
 scripts/run_all.sh
-#   or step by step:
-python scripts/02_fit_models.py --models uc pymc        # fit on Oct22-Dec23, forecast 2024; ArviZ diagnostics
-python scripts/03_backtest.py --models uc pymc naive    # coverage table -> outputs/tables/
+
+# or step by step
+python scripts/02_fit_models.py --models uc pymc                     # train Oct22-Dec23, forecast 2024 + ArviZ diagnostics
+python scripts/03_backtest.py --models uc pymc naive snaive          # coverage table (outputs/tables/)
 python scripts/04_plot_forecast.py --models uc pymc
-pytest                                                  # unit tests
+python scripts/06_forward_test.py --models uc pymc naive snaive      # train to Oct 2024, forecast later months (outputs/forward/)
+python scripts/07_summary_figure.py                                  # results/summary.png
+python scripts/05_dissertation_crosscheck.py                         # compare with dissertation Table 1
+pytest                                                               # unit tests
+
+# Rebuilding the regional table from raw NHS files (large; stays on your machine, git-ignored)
+#   put the release zips in data/raw/, then:
+python scripts/00_check_headers.py
+python scripts/00b_build_region_lookup.py --onspd path/to/ONSPD_FEB_2024_UK.zip
+python scripts/01_prepare_data.py --level region_lookup --all-statuses --end 2025-04-01
 ```
 
-`scripts/01_prepare_data.py --synthetic` generates clearly-labelled **synthetic** practice-level data in the same schema
-for testing the pipeline without the NHS files; its outputs are tagged `source=synthetic` and are not NHS results.
-Randomness is seeded (`config.SEED`; PyMC seed = SEED + region index). Layout: `src/nhs_forecast/` (library),
-`scripts/` (numbered pipeline), `data/{raw,processed,external}`, `results/` (committed final outputs), `tests/`.
+`scripts/01_prepare_data.py --synthetic` makes clearly-labelled **synthetic** data in the same schema for testing the pipeline
+without the NHS files; its output is tagged `source=synthetic` and is not NHS data. Randomness is seeded (`config.SEED`; PyMC seed =
+SEED + region index). Layout: `src/nhs_forecast/` (library), `scripts/` (numbered pipeline), `data/{raw,processed,external}`,
+`results/` (committed final outputs), `tests/`.
